@@ -9,20 +9,28 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Import Quotex
+# ==========================================
+# CORRECT IMPORT - pyquotex (NOT quotexpy)
+# ==========================================
 try:
-    from quotexpy import Quotex
-    from quotexpy.utils.account_type import AccountType
-    from quotexpy.utils.operation_type import OperationType
-    from quotexpy.utils import asset_parse
-    print("[✓] quotexpy loaded!")
-except ImportError:
-    print("[!] Installing quotexpy...")
-    os.system("pip install git+https://github.com/cleitonleonel/pyquotex.git")
-    from quotexpy import Quotex
-    from quotexpy.utils.account_type import AccountType
-    from quotexpy.utils.operation_type import OperationType
-    from quotexpy.utils import asset_parse
+    from pyquotex import Quotex
+    from pyquotex.utils.account_type import AccountType
+    from pyquotex.utils.operation_type import OperationType
+    from pyquotex.utils import asset_parse
+    print("[✓] pyquotex loaded successfully!")
+except ImportError as e:
+    print(f"[!] Import error: {e}")
+    print("[!] Installing pyquotex from GitHub...")
+    import subprocess
+    subprocess.check_call([
+        sys.executable, "-m", "pip", "install", 
+        "git+https://github.com/cleitonleonel/pyquotex.git"
+    ])
+    from pyquotex import Quotex
+    from pyquotex.utils.account_type import AccountType
+    from pyquotex.utils.operation_type import OperationType
+    from pyquotex.utils import asset_parse
+    print("[✓] pyquotex installed and loaded!")
 
 @app.route('/')
 def home():
@@ -32,13 +40,14 @@ def home():
 def health():
     return jsonify({
         'status': 'online',
-        'library': 'quotexpy',
+        'library': 'pyquotex',
         'time': datetime.now().strftime('%H:%M:%S')
     })
 
 @app.route('/api/check_balance', methods=['POST'])
 async def check_balance():
     """100% AUTO balance check using pyquotex"""
+    client = None
     try:
         data = request.get_json()
         email = data.get('email', '').strip()
@@ -50,9 +59,10 @@ async def check_balance():
                 'error': 'Email and password required'
             })
         
-        print(f"[*] Connecting: {email[:20]}...")
+        print(f"\n{'='*50}")
+        print(f"[*] Connecting: {email[:25]}...")
         
-        # Create Quotex client
+        # Create Quotex client with CORRECT class name
         client = Quotex(
             email=email,
             password=password,
@@ -60,17 +70,20 @@ async def check_balance():
         )
         
         # Connect to Quotex WebSocket
+        print("[*] Establishing WebSocket connection...")
         check_connect = await client.connect()
         
         if check_connect:
-            print("[✓] Connected to Quotex!")
+            print("[✓] Connected to Quotex WebSocket!")
             
             # Switch to PRACTICE (Demo) account
+            print("[*] Switching to DEMO account...")
             client.change_account(AccountType.PRACTICE)
             
             # Get real balance
+            print("[*] Fetching balance...")
             balance = await client.get_balance()
-            print(f"[💰] Balance: ${balance}")
+            print(f"[💰] LIVE BALANCE: ${balance}")
             
             # Close connection
             client.close()
@@ -80,16 +93,23 @@ async def check_balance():
                 'balance': f'${float(balance):,.2f}',
                 'account': 'DEMO',
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'auto': True
+                'auto': True,
+                'library': 'pyquotex'
             })
         else:
-            client.close()
+            if client:
+                client.close()
             return jsonify({
                 'success': False,
-                'error': '❌ Invalid credentials or network error'
+                'error': '❌ Login failed! Check email and password.'
             })
             
     except Exception as e:
+        if client:
+            try:
+                client.close()
+            except:
+                pass
         print(f"[✗] Error: {str(e)}")
         return jsonify({
             'success': False,
@@ -98,7 +118,8 @@ async def check_balance():
 
 @app.route('/api/refill_demo', methods=['POST'])
 async def refill_demo():
-    """Refill demo balance"""
+    """Refill demo balance to $10,000"""
+    client = None
     try:
         data = request.get_json()
         email = data.get('email')
@@ -118,8 +139,18 @@ async def refill_demo():
                 'balance': f'${float(balance):,.2f}',
                 'message': 'Demo balance refilled to $10,000'
             })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Connection failed'
+            })
             
     except Exception as e:
+        if client:
+            try:
+                client.close()
+            except:
+                pass
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
