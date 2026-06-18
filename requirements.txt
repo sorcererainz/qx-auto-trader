@@ -1,0 +1,6 @@
+Flask==3.0.0
+gunicorn==21.2.0
+git+https://github.com/cleitonleonel/pyquotex.git
+termcolor==2.4.0
+aiohttp==3.9.0
+websocket-client==1.6.4
